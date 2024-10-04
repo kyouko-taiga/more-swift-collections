@@ -1,0 +1,461 @@
+/// A hash table that preserves the positions of its key/value pairs on mutation.
+public struct StableMap<Key: Hashable, Value> {
+
+  /// The header of a stable map.
+  private struct Header {
+
+    /// The number of elements in the map.
+    var count: Int
+
+    /// The position immediately after the last used bucket.
+    var end: Int
+
+    /// A table from key hash to the offset of its corresponding bucket.
+    var hashToBucket: [Int]
+
+    /// Updates the hash-to-bucket table to assign `position` to `hash`.
+    mutating func assign(position: Int, forHash hash: Int) {
+      let h0 = abs(hash) % hashToBucket.count
+      var h1 = h0
+      while hashToBucket[h1] != -1 {
+        h1 = (h1 + 1) % hashToBucket.count
+        assert(h1 != h0)
+      }
+      hashToBucket[h1] = position
+    }
+
+  }
+
+  /// A bucket in a stable map.
+  private struct Bucket {
+
+    /// The key assigned to this bucket.
+    let key: Key
+
+    /// The value assigned to this bucket.
+    var value: Value
+
+    /// If the bucket is occupied, the 7 lowest bits of `key`'s hash; otherwise, 0.
+    var truncatedHash: UInt8
+
+    /// Returns `true` iff `p` refers to a bucket storing a key/value pair.
+    static func isActive(_ p: UnsafeMutablePointer<Bucket>) -> Bool {
+      withMaybeUninitializedHash(of: p, { (h) in (h.pointee & 0x80) == 0x80 })
+    }
+
+    /// Returns the result of `action` called with a pointer to the truncated hash of the bucket to
+    /// which `p` refers.
+    static func withMaybeUninitializedHash<T>(
+      of p: UnsafeMutablePointer<Bucket>, _ action: (UnsafeMutablePointer<UInt8>) -> T
+    ) -> T {
+      let q = UnsafeMutableRawPointer(mutating: p)
+      let h = MemoryLayout<Bucket>.offset(of: \.truncatedHash)!
+      return action((q + h).assumingMemoryBound(to: UInt8.self))
+    }
+
+    /// Deinitializes the memory referenced by `p`, returning the key/value pair that it stored.
+    static func unsafelyDeinitialize(
+      _ p: UnsafeMutablePointer<Bucket>
+    ) -> (key: Key, value: Value) {
+      p.pointee.truncatedHash = 0x7f
+      let q = UnsafeMutableRawPointer(mutating: p)
+      let k = MemoryLayout<Bucket>.offset(of: \.key)!
+      let v = MemoryLayout<Bucket>.offset(of: \.value)!
+
+      return (
+        (q + k).assumingMemoryBound(to: Key.self).move(),
+        (q + v).assumingMemoryBound(to: Value.self).move())
+    }
+
+  }
+
+  /// The result of a lookup for the position of a key.
+  private enum LookupResult {
+
+    /// The key has been found; the position is in the associated value.
+    case found(Int)
+
+    /// The key has not been found; the associated value is a valid insertion position.
+    case notFound(Int)
+
+  }
+
+  /// The contents of a stable map.
+  private class Contents: ManagedBuffer<Header, Bucket> {
+
+    /// Deinitializes `self`.
+    deinit { deinitializeElements() }
+
+    /// Deinitialize all elements in `self`.
+    func deinitializeElements() {
+      withUnsafeMutablePointerToElements { (body) in
+        for i in 0 ..< capacity {
+          let s = body.advanced(by: i)
+          if Bucket.isActive(s) { s.deinitialize(count: 1) }
+          Bucket.withMaybeUninitializedHash(of: s, { (h) in h.initialize(to: 0) })
+        }
+      }
+    }
+
+  }
+
+  /// The key/value pairs stored in `self`.
+  private var contents: ManagedBuffer<Header, Bucket>?
+
+  /// Creates an empty instance.
+  public init() {
+    self.contents = nil
+  }
+
+  /// Creates an empty instance with enough space to store `minimumCapacity` elements without
+  /// allocating new storage.
+  public init(minimumCapacity: Int) {
+    self.init()
+    self.reserveCapacity(minimumCapacity)
+  }
+
+  /// Creates an instance with the key/value pairs in `keysAndValues`.
+  public init<S: Sequence<(Key, Value)>>(uniqueKeysAndValues keysAndValues: S) {
+    self.init()
+    reserveCapacity(keysAndValues.underestimatedCount)
+    for (k, v) in keysAndValues {
+      let inserted = assignValue(v, forKey: k).inserted
+      precondition(inserted)
+    }
+  }
+
+  /// `true` iff `self` is empty.
+  public var isEmpty: Bool {
+    count == 0
+  }
+
+  /// The number of elements stored in `self`.
+  public var count: Int {
+    contents?.header.count ?? 0
+  }
+
+  /// The number of elements that can be stored in `self` without allocating new storage.
+  public var capacity: Int {
+    contents?.capacity ?? 0
+  }
+
+  /// Accesses the value assigned for `key`.
+  public subscript(key: Key) -> Value? {
+    get {
+      switch lookup(key) {
+      case .found(let i):
+        return self[i].value
+      default:
+        return nil
+      }
+    }
+
+    set {
+      switch (lookup(key), newValue) {
+      case (.found(let i), .some(let value)):
+        ensureUnique()
+        contents!.withUnsafeMutablePointerToElements { (body) in
+          body.advanced(by: i).pointee.value = value
+        }
+      case (.found(let i), nil):
+        remove(at: i)
+      case (.notFound(let i), .some(let value)):
+        insert(key: key, value: value, at: i)
+      case (.notFound, nil):
+        break
+      }
+    }
+  }
+
+  /// Returns the position of `key` in `self`.
+  public func index(forKey key: Key) -> Int? {
+    if case .found(let i) = lookup(key) {
+      return i
+    } else {
+      return nil
+    }
+  }
+
+  /// Assigns `value` to `key` and returns `(inserted: i, position: p)` where `i` is `true` iff no
+  /// value was assigned to `key` and `p` is the position of `key` in `self`.
+  @discardableResult
+  public mutating func assignValue(
+    _ value: Value, forKey key: Key
+  ) -> (inserted: Bool, position: Int) {
+    switch lookup(key) {
+    case .found(let i):
+      ensureUnique()
+      contents!.withUnsafeMutablePointerToElements { (body) in
+        body.advanced(by: i).pointee.value = value
+      }
+      return (inserted: false, position: i)
+
+    case .notFound(let i):
+      insert(key: key, value: value, at: i)
+      return (inserted: true, position: i)
+    }
+  }
+
+  /// Removes the key/value pair stored at `p`.
+  ///
+  /// - Requires: `p` is a valid position in `self`.
+  @discardableResult
+  public mutating func remove(at p: Int) -> (key: Key, value: Value) {
+    ensureUnique()
+    guard let c = contents else { preconditionFailure("Index out of range") }
+    return c.withUnsafeMutablePointers { (head, body) in
+      head.pointee.count -= 1
+      return Bucket.unsafelyDeinitialize(body.advanced(by: p))
+    }
+  }
+
+  /// Removes the value assigned to `key` in `self`.
+  @discardableResult
+  public mutating func removeValue(forKey key: Key) -> Value? {
+    switch lookup(key) {
+    case .found(let i):
+      return remove(at: i).value
+    case .notFound:
+      return nil
+    }
+  }
+
+  /// Removes all key/value pairs in `self`, preserving storage if `keepCapacity` is `true`.
+  public mutating func removeAll(keepingCapacity keepCapacity: Bool = false) {
+    if keepCapacity {
+      if isKnownUniquelyReferenced(&contents), let c = contents as? Contents {
+        c.deinitializeElements()
+        c.header = .init(count: 0, end: 0, hashToBucket: .init(repeating: -1, count: capacity))
+      } else {
+        self = .init(minimumCapacity: capacity)
+      }
+    } else {
+      contents = nil
+    }
+  }
+
+  /// Reserves enough space to store `minimumCapacity` elements without allocating new storage.
+  public mutating func reserveCapacity(_ minimumCapacity: Int) {
+    if capacity >= minimumCapacity { return }
+
+    var newCapacity = Swift.max(1, capacity)
+    while newCapacity < minimumCapacity {
+      newCapacity += newCapacity
+    }
+    reallocate(withCapacity: newCapacity)
+  }
+
+  /// Reallocates `self`'s storage if it isn't unique.
+  private mutating func ensureUnique() {
+    if isKnownUniquelyReferenced(&contents) { return }
+    reallocate(withCapacity: capacity)
+  }
+
+  /// Reallocates `self`'s storage with enough space to store `newCapacity` elements.
+  ///
+  /// - Requires: `newCapacity >= capacity`
+  private mutating func reallocate(withCapacity newCapacity: Int) {
+    let newContents = Contents.create(minimumCapacity: newCapacity) { _ in
+      let (c, e) = contents.map { (c) in (c.header.count, c.header.end) } ?? (0, 0)
+      let n = Int(Double(newCapacity) * 1.25)
+      return .init(count: c, end: e, hashToBucket: .init(repeating: -1, count: n))
+    }
+
+    // Copy the current contents.
+    contents?.withUnsafeMutablePointers { (_, source) in
+      newContents.withUnsafeMutablePointers { (head, target) in
+        for i in 0 ..< capacity {
+          // Copy the bucket.
+          let s = source.advanced(by: i)
+          let t = target.advanced(by: i)
+          let k = Bucket.withMaybeUninitializedHash(of: s) { (h) -> Key? in
+            if (h.pointee == 0x00) || (h.pointee == 0x7f) {
+              // Bucket is empty or has been occupied.
+              Bucket.withMaybeUninitializedHash(of: t, { (g) in g.initialize(to: h.pointee) })
+              return nil
+            } else {
+              // Bucket is occupied.
+              t.initialize(from: s, count: 1)
+              return s.pointee.key
+            }
+          }
+
+          // Update the hash-to-bucket relation if the bucket is occupied.
+          if let key = k {
+            head.pointee.assign(position: i, forHash: key.hashValue)
+          }
+        }
+      }
+    }
+
+    // Zero-initialize the additional storage.
+    newContents.withUnsafeMutablePointerToElements { (t) in
+      for i in count ..< newCapacity {
+        Bucket.withMaybeUninitializedHash(of: t.advanced(by: i), { (h) in h.initialize(to: 0) })
+      }
+    }
+
+    contents = newContents
+  }
+
+  /// Returns the position of `key` in `self`.
+  private func lookup(_ key: Key) -> LookupResult {
+    contents?.withUnsafeMutablePointers { (head, body) -> LookupResult in
+      let hash = key.hashValue
+      let truncatedHash = UInt8(hash & 0xff) | 0x80
+
+      let h0 = abs(hash) % head.pointee.hashToBucket.count
+      var h1 = h0
+      var emptyBucket = -1
+      repeat {
+        let position = head.pointee.hashToBucket[h1]
+        let h2 = body[position].truncatedHash
+
+        if position == -1 {
+          // Hash is not stored.
+          break
+        } else if (h2 == truncatedHash) && body[position].key == key {
+          // Bucket found.
+          return .found(position)
+        } else if h2 == 0 {
+          // Key is not contained.
+          break
+        } else if (h2 & 0x7f) == 0x7f {
+          // Bucket has been occupied.
+          emptyBucket = position
+        }
+
+        // Keep probing.
+        h1 = (h1 + 1) % head.pointee.hashToBucket.count
+      } while h1 != h0
+      return .notFound(emptyBucket == -1 ? head.pointee.end : emptyBucket)
+    } ?? .notFound(0)
+  }
+
+  /// Inserts the given key/value pair at `p`.
+  private mutating func insert(key: Key, value: Value, at p: Int) {
+    reserveCapacity(Swift.max(count + 1, p))
+    ensureUnique()
+    contents!.withUnsafeMutablePointers { (head, body) in
+      let hash = key.hashValue
+      body.advanced(by: p).initialize(
+        to: .init(key: key, value: value, truncatedHash: UInt8(hash & 0xff) | 0x80))
+      head.pointee.assign(position: p, forHash: hash)
+      head.pointee.count += 1
+      if (p == head.pointee.end) { head.pointee.end = p + 1 }
+    }
+  }
+
+}
+
+extension StableMap: ExpressibleByDictionaryLiteral {
+
+  /// Creates an instance from a dictionary literal.
+  public init(dictionaryLiteral elements: (Key, Value)...) {
+    self.init(uniqueKeysAndValues: elements)
+  }
+
+}
+
+extension StableMap: Collection {
+
+  public typealias Element = (key: Key, value: Value)
+
+  public typealias Index = Int
+
+  /// The position of the first key/value pair in `self`.
+  public var startIndex: Int {
+    contents.map { (c) in
+      c.withUnsafeMutablePointers { (head, body) in
+        for i in 0 ..< head.pointee.end {
+          if Bucket.isActive(body.advanced(by: i)) { return i }
+        }
+        return head.pointee.end
+      }
+    } ?? 0
+  }
+
+  /// The position immediately after the position of the last key/value pair in `self`.
+  public var endIndex: Int {
+    contents?.header.end ?? 0
+  }
+
+  /// Returns the position immediately after `p`.
+  ///
+  /// - Requires: `p` is a valid position in `self`.
+  public func index(after p: Int) -> Int {
+    guard let c = contents else { preconditionFailure("Index out of range") }
+    return c.withUnsafeMutablePointers { (head, body) in
+      precondition((p >= 0) && (p < head.pointee.end), "Index out of range")
+      for i in (p + 1) ..< head.pointee.end {
+        if Bucket.isActive(body.advanced(by: i)) { return i }
+      }
+      return head.pointee.end
+    }
+  }
+
+  /// Accesses the key/value pair at `p`.
+  ///
+  /// - Requires: `p` is a valid position in `self`.
+  public subscript(p: Int) -> (key: Key, value: Value) {
+    guard let c = contents else { preconditionFailure("Index out of range") }
+    return c.withUnsafeMutablePointers { (head, body) in
+      precondition((p >= 0) && (p < head.pointee.end), "Index out of range")
+      let s = body.advanced(by: p)
+      precondition(Bucket.isActive(s), "Index out of range")
+      return (s.pointee.key, s.pointee.value)
+    }
+  }
+
+}
+
+extension StableMap: BidirectionalCollection {
+
+  /// Returns the position immediately before `p`.
+  ///
+  /// - Requires: `p` is a valid position in `self` and different from `self.startIndex`.
+  public func index(before p: Int) -> Int {
+    guard let c = contents else { preconditionFailure("Index out of range") }
+    return c.withUnsafeMutablePointers { (head, body) in
+      precondition((p >= 0) && (p <= head.pointee.end), "Index out of range")
+      for i in (0 ..< p).reversed() {
+        if Bucket.isActive(body.advanced(by: i)) { return i }
+      }
+      preconditionFailure("Index out of range")
+    }
+  }
+
+}
+
+extension StableMap: Equatable where Value: Equatable {
+
+  /// Returns `true` iff `l` is equal to `r`.
+  public static func == (l: Self, r: Self) -> Bool {
+    (l.contents === r.contents) || l.elementsEqual(r) { (a, b) in
+      (a.key == b.key) && (a.value == b.value)
+    }
+  }
+
+}
+
+extension StableMap: Hashable where Value: Hashable {
+
+  /// Adds a hash of the salient parts of `self` into `hasher`.
+  public func hash(into hasher: inout Hasher) {
+    for (k, v) in self {
+      hasher.combine(k)
+      hasher.combine(v)
+    }
+  }
+
+}
+
+extension StableMap: CustomStringConvertible {
+
+  /// A textual description of `self`.
+  public var description: String {
+    let pairs = self.map({ (k, v) in "\(k): \(v)"}).joined(separator: ", ")
+    return "[\(pairs)]"
+  }
+
+}
