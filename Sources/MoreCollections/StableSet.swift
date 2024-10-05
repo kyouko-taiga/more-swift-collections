@@ -1,4 +1,21 @@
 /// A hash set that preserves the positions of its elements on mutation.
+///
+/// You can use `StableSet` instead of `Set` if you want indices in your collection to remain valid
+/// after insertion or deletion.
+///
+/// ```swift
+/// var s: StableSet = ["a", "b"]
+/// print(s.firstIndex(of: "b")!) // Prints 1
+/// s.remove("a")
+/// s.insert("c")
+/// print(s.firstIndex(of: "b")!) // Prints 1
+/// ```
+///
+/// The order that can be observed through `StableSet`'s conformance to collection is also stable
+/// (i.e., preserved under mutation) but note that the index of a removed member may be reused to
+/// insert another one.
+///
+/// Internally, a `StableSet` is a `StableDictionary` whose values are empty.
 public struct StableSet<Element: Hashable> {
 
   /// An empty value.

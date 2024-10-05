@@ -1,4 +1,22 @@
 /// A hash table that preserves the positions of its key/value pairs on mutation.
+///
+/// You can use `StableDictionary` instead of `Dictionary` if you want indices in your collection
+/// to remain valid after insertion or deletion.
+///
+/// ```swift
+/// var s: StableDictionary = ["a": 1, "b": 2]
+/// print(s.index(forKey: "b")!) // Prints 1
+/// s["a"] = nil
+/// s["c"] = 3
+/// print(s.index(forKey: "b")!) // Prints 1
+/// ```
+///
+/// The order that can be observed through `StableDictionary`'s conformance to collection is also
+/// stable (i.e., preserved under mutation) but note that the index of a removed key/value pair may
+/// be reused to insert another one.
+///
+/// Internally, a `StableDictionary` is composed of an array, which stores key/value pairs, and a
+/// hash table mapping key hashes to their position in that array.
 public struct StableDictionary<Key: Hashable, Value> {
 
   /// The header of a stable map.
