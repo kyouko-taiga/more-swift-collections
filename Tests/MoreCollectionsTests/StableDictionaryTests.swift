@@ -1,17 +1,17 @@
 import XCTest
 import MoreCollections
 
-class StableMapTests: XCTestCase {
+class StableDictionaryTests: XCTestCase {
 
   func testIsEmpty() {
-    var s = StableMap<String, Int>()
+    var s = StableDictionary<String, Int>()
     XCTAssert(s.isEmpty)
     s["a"] = 1
     XCTAssertFalse(s.isEmpty)
   }
 
   func testCount() {
-    var s = StableMap<String, Int>()
+    var s = StableDictionary<String, Int>()
     XCTAssertEqual(s.count, 0)
     s["a"] = 100
     XCTAssertEqual(s.count, 1)
@@ -25,18 +25,18 @@ class StableMapTests: XCTestCase {
 
   func testInitWithKeyValuePairs() {
     let pairs = [("a", 1), ("b", 2)]
-    let s = StableMap<String, Int>(uniqueKeysAndValues: pairs)
+    let s = StableDictionary<String, Int>(uniqueKeysAndValues: pairs)
     XCTAssert(s.elementsEqual(pairs, by: { (a, b) in (a.0 == b.0) && (a.1 == b.1) }))
   }
 
   func testInitWithDictionaryLiteral() {
     let pairs = [("a", 1), ("b", 2)]
-    let s: StableMap = ["a": 1, "b": 2]
+    let s: StableDictionary = ["a": 1, "b": 2]
     XCTAssert(s.elementsEqual(pairs, by: { (a, b) in (a.0 == b.0) && (a.1 == b.1) }))
   }
 
   func testKeySubscript() {
-    var s = StableMap<String, Int>()
+    var s = StableDictionary<String, Int>()
     s["a"] = 100 // insert
     XCTAssertEqual(s["a"], 100)
     s["a"] = 200 // update
@@ -48,7 +48,7 @@ class StableMapTests: XCTestCase {
   }
 
   func testIndexForKey() {
-    var s = StableMap<String, Int>()
+    var s = StableDictionary<String, Int>()
     XCTAssertNil(s.index(forKey: "a"))
 
     s["a"] = 1
@@ -67,7 +67,7 @@ class StableMapTests: XCTestCase {
   }
 
   func testAssignValueForKey() {
-    var s = StableMap<String, Int>()
+    var s = StableDictionary<String, Int>()
 
     let p0 = s.assignValue(1, forKey: "a")
     XCTAssert(p0.inserted)
@@ -86,14 +86,14 @@ class StableMapTests: XCTestCase {
   }
 
   func testReinsertPair() {
-    var s: StableMap = ["a": 1, "b": 2, "c": 3]
+    var s: StableDictionary = ["a": 1, "b": 2, "c": 3]
     s["b"] = nil
     s["b"] = 200
     XCTAssertEqual(s.index(forKey: "b"), 1)
   }
 
   func testRemoveAt() {
-    var s: StableMap = ["a": 1, "b": 2, "c": 3]
+    var s: StableDictionary = ["a": 1, "b": 2, "c": 3]
     XCTAssertEqual(s.remove(at: 1).key, "b")
     XCTAssertEqual(s.map(\.key), ["a", "c"])
     XCTAssertEqual(s.remove(at: 2).key, "c")
@@ -101,14 +101,14 @@ class StableMapTests: XCTestCase {
   }
 
   func testRemoveValueForKey() {
-    var s: StableMap = ["a": 1, "b": 2, "c": 3]
+    var s: StableDictionary = ["a": 1, "b": 2, "c": 3]
     XCTAssertEqual(s.removeValue(forKey: "a"), 1)
     XCTAssertNil(s.removeValue(forKey: "a"))
     XCTAssertNil(s.removeValue(forKey: "z"))
   }
 
   func testRemoveAll() {
-    var s: StableMap = ["a": 1, "b": 2, "c": 3]
+    var s: StableDictionary = ["a": 1, "b": 2, "c": 3]
     s.removeAll()
     XCTAssert(s.isEmpty)
 
@@ -126,7 +126,7 @@ class StableMapTests: XCTestCase {
   }
 
   func testReserveCapacity() {
-    var s: StableMap = ["a": 1, "b": 2, "c": 3]
+    var s: StableDictionary = ["a": 1, "b": 2, "c": 3]
     let t = s
     s.reserveCapacity(100)
     XCTAssertEqual(s, t)
@@ -135,7 +135,7 @@ class StableMapTests: XCTestCase {
   }
 
   func testIsValue() {
-    let s: StableMap = ["a": 1, "b": 2]
+    let s: StableDictionary = ["a": 1, "b": 2]
     var t = s
     t["a"] = 3
     XCTAssertEqual(s["a"], 1)
@@ -143,7 +143,7 @@ class StableMapTests: XCTestCase {
   }
 
   func testIsCollection() {
-    var s: StableMap = ["a": 1, "b": 2, "c": 3]
+    var s: StableDictionary = ["a": 1, "b": 2, "c": 3]
     s.remove(at: 1)
 
     var i = s.startIndex
@@ -155,7 +155,7 @@ class StableMapTests: XCTestCase {
   }
 
   func testIsBidirectionalCollection() {
-    var s: StableMap = ["a": 1, "b": 2, "c": 3]
+    var s: StableDictionary = ["a": 1, "b": 2, "c": 3]
     s.remove(at: 1)
 
     var i = s.index(before: s.endIndex)
@@ -165,22 +165,22 @@ class StableMapTests: XCTestCase {
   }
 
   func testIsEquatable() {
-    let s: StableMap = ["a": 1, "b": 2]
-    let t: StableMap = ["a": 1, "b": 2]
+    let s: StableDictionary = ["a": 1, "b": 2]
+    let t: StableDictionary = ["a": 1, "b": 2]
     XCTAssertEqual(s, s)
     XCTAssertEqual(s, t)
-    let u: StableMap = ["b": 2, "a": 1]
+    let u: StableDictionary = ["b": 2, "a": 1]
     XCTAssertNotEqual(s, u)
   }
 
   func testIsHashable() {
-    let s: StableMap = ["a": 1, "b": 2]
-    let t: StableMap = ["a": 1, "b": 2]
+    let s: StableDictionary = ["a": 1, "b": 2]
+    let t: StableDictionary = ["a": 1, "b": 2]
     XCTAssertEqual(s.hashValue, t.hashValue)
   }
 
   func testIsCustomStringConvertible() {
-    let s: StableMap = [1: -1, 2: -2]
+    let s: StableDictionary = [1: -1, 2: -2]
     XCTAssertEqual(s.description, "[1: -1, 2: -2]")
   }
 

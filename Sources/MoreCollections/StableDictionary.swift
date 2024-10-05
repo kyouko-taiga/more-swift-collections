@@ -1,5 +1,5 @@
 /// A hash table that preserves the positions of its key/value pairs on mutation.
-public struct StableMap<Key: Hashable, Value> {
+public struct StableDictionary<Key: Hashable, Value> {
 
   /// The header of a stable map.
   private struct Header {
@@ -350,7 +350,7 @@ public struct StableMap<Key: Hashable, Value> {
 
 }
 
-extension StableMap: ExpressibleByDictionaryLiteral {
+extension StableDictionary: ExpressibleByDictionaryLiteral {
 
   /// Creates an instance from a dictionary literal.
   public init(dictionaryLiteral elements: (Key, Value)...) {
@@ -359,7 +359,7 @@ extension StableMap: ExpressibleByDictionaryLiteral {
 
 }
 
-extension StableMap: Collection {
+extension StableDictionary: Collection {
 
   public typealias Element = (key: Key, value: Value)
 
@@ -411,7 +411,7 @@ extension StableMap: Collection {
 
 }
 
-extension StableMap: BidirectionalCollection {
+extension StableDictionary: BidirectionalCollection {
 
   /// Returns the position immediately before `p`.
   ///
@@ -429,7 +429,7 @@ extension StableMap: BidirectionalCollection {
 
 }
 
-extension StableMap: Equatable where Value: Equatable {
+extension StableDictionary: Equatable where Value: Equatable {
 
   /// Returns `true` iff `l` is equal to `r`.
   public static func == (l: Self, r: Self) -> Bool {
@@ -440,7 +440,7 @@ extension StableMap: Equatable where Value: Equatable {
 
 }
 
-extension StableMap: Hashable where Value: Hashable {
+extension StableDictionary: Hashable where Value: Hashable {
 
   /// Adds a hash of the salient parts of `self` into `hasher`.
   public func hash(into hasher: inout Hasher) {
@@ -452,7 +452,7 @@ extension StableMap: Hashable where Value: Hashable {
 
 }
 
-extension StableMap: CustomStringConvertible {
+extension StableDictionary: CustomStringConvertible {
 
   /// A textual description of `self`.
   public var description: String {
