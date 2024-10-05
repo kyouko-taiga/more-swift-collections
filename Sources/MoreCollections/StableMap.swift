@@ -283,6 +283,8 @@ public struct StableMap<Key: Hashable, Value> {
           // Update the hash-to-bucket relation if the bucket is occupied.
           if let key = k {
             head.pointee.assign(position: i, forHash: key.hashValue)
+          } else {
+            Bucket.withMaybeUninitializedHash(of: t, { (g) in g.initialize(to: 0) })
           }
         }
       }

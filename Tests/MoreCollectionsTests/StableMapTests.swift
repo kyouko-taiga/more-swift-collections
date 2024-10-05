@@ -130,6 +130,7 @@ class StableMapTests: XCTestCase {
     let t = s
     s.reserveCapacity(100)
     XCTAssertEqual(s, t)
+    XCTAssertNotEqual(s.capacity, t.capacity)
     XCTAssertGreaterThanOrEqual(s.capacity, 100)
   }
 
