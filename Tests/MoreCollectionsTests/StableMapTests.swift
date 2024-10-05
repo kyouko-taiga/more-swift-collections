@@ -94,9 +94,9 @@ class StableMapTests: XCTestCase {
 
   func testRemoveAt() {
     var s: StableMap = ["a": 1, "b": 2, "c": 3]
-    s.remove(at: 1)
+    XCTAssertEqual(s.remove(at: 1).key, "b")
     XCTAssertEqual(s.map(\.key), ["a", "c"])
-    s.remove(at: 2)
+    XCTAssertEqual(s.remove(at: 2).key, "c")
     XCTAssertEqual(s.map(\.key), ["a"])
   }
 
