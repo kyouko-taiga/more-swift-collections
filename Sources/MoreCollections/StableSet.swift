@@ -142,8 +142,8 @@ extension StableSet: BidirectionalCollection {
   /// Returns the position immediately before `p`.
   ///
   /// - Requires: `p` is a valid position in `self` and different from `self.startIndex`.
-  public func index(before i: Int) -> Int {
-    contents.index(before: i)
+  public func index(before p: Int) -> Int {
+    contents.index(before: p)
   }
 
 }
