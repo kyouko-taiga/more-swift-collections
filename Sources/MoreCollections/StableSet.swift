@@ -132,7 +132,7 @@ extension StableSet: Collection {
   ///
   /// - Requires: `p` is a valid position in `self`.
   public subscript(p: Int) -> Element {
-    contents[p].key
+    _read { yield contents[p].key }
   }
 
 }
