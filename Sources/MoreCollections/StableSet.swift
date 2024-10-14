@@ -148,9 +148,9 @@ extension StableSet: BidirectionalCollection {
 
 }
 
-extension StableSet: Equatable where Element: Equatable {}
+extension StableSet: Equatable {}
 
-extension StableSet: Hashable where Element: Hashable {}
+extension StableSet: Hashable {}
 
 extension StableSet: CustomStringConvertible {
 
