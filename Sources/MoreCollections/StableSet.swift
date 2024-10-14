@@ -72,7 +72,7 @@ public struct StableSet<Element: Hashable> {
     contents.assignValue(.init(), forKey: member)
   }
 
-  /// Removes the element stored at `p`.
+  /// Removes the member stored at `p`.
   ///
   /// - Requires: `p` is a valid position in `self`.
   @discardableResult
