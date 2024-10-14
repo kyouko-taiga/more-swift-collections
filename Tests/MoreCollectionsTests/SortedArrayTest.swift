@@ -50,6 +50,13 @@ class SortedArrayTests: XCTestCase {
     XCTAssertEqual(s.insert(1), 2)
   }
 
+  func testInsertIf() {
+    var s = SortedArray<Int>()
+    XCTAssertEqual(s.insert(0, if: { (_, _) in true }), 0)
+    XCTAssertNil(s.insert(0, if: { (_, _) in false }))
+    XCTAssertNil(s.insert(1, if: { (t, i) in i < t.endIndex }))
+  }
+
   func testRemoveAt() {
     var s: SortedArray = [1, 5, 3]
     XCTAssertEqual(s.remove(at: 1), 3)

@@ -42,6 +42,23 @@ public struct SortedArray<Element: Comparable> {
     return p
   }
 
+  /// Inserts `newElement` in `self` iff `predicate` applied to the index at which `newElement`
+  /// would be inserted returns `true`.
+  ///
+  /// - Complexity: O(log *n*), where *n* is the length of `self`.
+  @discardableResult
+  public mutating func insert(
+    _ newElement: Element, if predicate: (Self, Int) throws -> Bool
+  ) rethrows -> Int? {
+    let p = insertionIndex(of: newElement)
+    if try predicate(self, p) {
+      contents.insert(newElement, at: p)
+      return p
+    } else {
+      return nil
+    }
+  }
+
   /// Removes the element stored at `p`.
   ///
   /// - Requires: `p` is a valid position in `self`.
