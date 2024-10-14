@@ -3,6 +3,11 @@ import MoreCollections
 
 class StableSetTests: XCTestCase {
 
+  func testInitWithMinimumCapacity() {
+    let s = StableSet<String>(minimumCapacity: 100)
+    XCTAssertGreaterThanOrEqual(s.capacity, 100)
+  }
+
   func testIsEmpty() {
     var s = StableSet<String>()
     XCTAssert(s.isEmpty)
