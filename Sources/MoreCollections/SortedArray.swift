@@ -42,21 +42,41 @@ public struct SortedArray<Element: Comparable> {
     return p
   }
 
-  /// Inserts `newElement` in `self` iff `predicate` applied to the index at which `newElement`
-  /// would be inserted returns `true`.
+  /// Inserts `newElement` in `self` and returns `(inserted: true, position: p)` iff `predicate(p)`
+  /// returns `true`, `p` is the position at whicn `newMember` should be inserted. Otherwise,
+  /// returns `(inserted: false, position: p)`.
   ///
   /// - Complexity: O(log *n*), where *n* is the length of `self`.
   @discardableResult
   public mutating func insert(
     _ newElement: Element, if predicate: (Self, Int) throws -> Bool
-  ) rethrows -> Int? {
+  ) rethrows -> (inserted: Bool, position: Int) {
     let p = insertionIndex(of: newElement)
     if try predicate(self, p) {
       contents.insert(newElement, at: p)
-      return p
+      return (inserted: true, position: p)
     } else {
-      return nil
+      return (inserted: false, position: p)
     }
+  }
+
+  /// Returns the position at which `member` could be inserted.
+  public func insertionIndex(of element: Element) -> Int {
+    var upper = contents.count
+    var lower = 0
+
+    while upper > 0 {
+      let h = upper >> 1
+      let m = lower + h
+      if element <= contents[m] {
+        upper = h
+      } else {
+        lower = m + 1
+        upper = upper - (h + 1)
+      }
+    }
+
+    return lower
   }
 
   /// Removes the element stored at `p`.
@@ -75,25 +95,6 @@ public struct SortedArray<Element: Comparable> {
   /// Reserves enough space to store `minimumCapacity` elements without allocating new storage.
   public mutating func reserveCapacity(_ minimumCapacity: Int) {
     contents.reserveCapacity(minimumCapacity)
-  }
-
-  /// Returns the position at which `member` could be inserted.
-  private func insertionIndex(of element: Element) -> Int {
-    var upper = contents.count
-    var lower = 0
-
-    while upper > 0 {
-      let h = upper >> 1
-      let m = lower + h
-      if element <= contents[m] {
-        upper = h
-      } else {
-        lower = m + 1
-        upper = upper - (h + 1)
-      }
-    }
-
-    return lower
   }
 
 }

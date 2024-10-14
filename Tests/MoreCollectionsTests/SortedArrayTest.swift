@@ -52,9 +52,23 @@ class SortedArrayTests: XCTestCase {
 
   func testInsertIf() {
     var s = SortedArray<Int>()
-    XCTAssertEqual(s.insert(0, if: { (_, _) in true }), 0)
-    XCTAssertNil(s.insert(0, if: { (_, _) in false }))
-    XCTAssertNil(s.insert(1, if: { (t, i) in i < t.endIndex }))
+
+    let a = s.insert(1, if: { (_, _) in true })
+    XCTAssert(a.inserted)
+    XCTAssertEqual(a.position, 0)
+    let b = s.insert(0, if: { (t, i) in i < t.endIndex })
+    XCTAssert(b.inserted)
+    XCTAssertEqual(a.position, 0)
+    let c = s.insert(2, if: { (t, i) in i < t.endIndex })
+    XCTAssertFalse(c.inserted)
+    XCTAssertEqual(c.position, 2)
+  }
+
+  func testInsertionIndex() {
+    let s: SortedArray = [1, 5, 3]
+    XCTAssertEqual(s.insertionIndex(of: 0), 0)
+    XCTAssertEqual(s.insertionIndex(of: 1), 0)
+    XCTAssertEqual(s.insertionIndex(of: 2), 1)
   }
 
   func testRemoveAt() {
