@@ -25,11 +25,22 @@ public struct StableDictionary<Key: Hashable, Value> {
     /// The number of elements in the map.
     var count: Int
 
+    /// The number of buckets in the map.
+    var capacity: Int
+
     /// The position immediately after the last used bucket.
     var end: Int
 
     /// A table from key hash to the offset of its corresponding bucket.
     var hashToBucket: [Int]
+
+    /// Creates an instance with the given properties.
+    init(count: Int, capacity: Int, end: Int) {
+      self.count = count
+      self.capacity = capacity
+      self.end = end
+      self.hashToBucket = .init(repeating: -1, count: Int(Double(capacity) * 1.25))
+    }
 
     /// Updates the hash-to-bucket table to assign `position` to `hash`.
     mutating func assign(position: Int, forHash hash: Int) {
@@ -106,8 +117,8 @@ public struct StableDictionary<Key: Hashable, Value> {
 
     /// Deinitialize all elements in `self`.
     func deinitializeElements() {
-      withUnsafeMutablePointerToElements { (body) in
-        for i in 0 ..< capacity {
+      withUnsafeMutablePointers { (head, body) in
+        for i in 0 ..< head.pointee.capacity {
           let s = body.advanced(by: i)
           if Bucket.isActive(s) { s.deinitialize(count: 1) }
           Bucket.withMaybeUninitializedHash(of: s, { (h) in h.initialize(to: 0) })
@@ -154,7 +165,7 @@ public struct StableDictionary<Key: Hashable, Value> {
 
   /// The number of elements that can be stored in `self` without allocating new storage.
   public var capacity: Int {
-    contents?.capacity ?? 0
+    contents?.header.capacity ?? 0
   }
 
   /// Accesses the value assigned for `key`.
@@ -243,7 +254,7 @@ public struct StableDictionary<Key: Hashable, Value> {
     if keepCapacity {
       if isKnownUniquelyReferenced(&contents), let c = contents as? Contents {
         c.deinitializeElements()
-        c.header = .init(count: 0, end: 0, hashToBucket: .init(repeating: -1, count: capacity))
+        c.header = .init(count: 0, capacity: capacity, end: 0)
       } else {
         self = .init(minimumCapacity: capacity)
       }
@@ -275,8 +286,7 @@ public struct StableDictionary<Key: Hashable, Value> {
   private mutating func reallocate(withCapacity newCapacity: Int) {
     let newContents = Contents.create(minimumCapacity: newCapacity) { _ in
       let (c, e) = contents.map { (c) in (c.header.count, c.header.end) } ?? (0, 0)
-      let n = Int(Double(newCapacity) * 1.25)
-      return .init(count: c, end: e, hashToBucket: .init(repeating: -1, count: n))
+      return .init(count: c, capacity: newCapacity, end: e)
     }
 
     // Copy the current contents.
