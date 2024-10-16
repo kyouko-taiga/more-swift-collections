@@ -19,13 +19,13 @@
 /// hash table mapping key hashes to their position in that array.
 public struct StableDictionary<Key: Hashable, Value> {
 
-  /// The header of a stable map.
+  /// The header of a stable dictionary.
   private struct Header {
 
-    /// The number of elements in the map.
+    /// The number of elements in the dictionary.
     var count: Int
 
-    /// The number of buckets in the map.
+    /// The number of buckets in the dictionary.
     var capacity: Int
 
     /// The position immediately after the last used bucket.
@@ -55,7 +55,7 @@ public struct StableDictionary<Key: Hashable, Value> {
 
   }
 
-  /// A bucket in a stable map.
+  /// A bucket in a stable dictionary.
   private struct Bucket {
 
     /// The key assigned to this bucket.
