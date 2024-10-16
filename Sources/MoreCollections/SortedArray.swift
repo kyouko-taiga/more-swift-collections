@@ -14,6 +14,11 @@ public struct SortedArray<Element: Comparable> {
     self.contents = members.sorted()
   }
 
+  /// `true` iff `self` is empty.
+  public var isEmpty: Bool {
+    contents.count == 0
+  }
+
   /// The number of elements stored in `self`.
   public var count: Int {
     contents.count
