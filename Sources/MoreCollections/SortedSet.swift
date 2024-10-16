@@ -15,6 +15,11 @@ public struct SortedSet<Element: Comparable> {
     for m in members { self.insert(m) }
   }
 
+  /// `true` iff `self` is empty.
+  public var isEmpty: Bool {
+    count == 0
+  }
+
   /// The number of elements stored in `self`.
   public var count: Int {
     contents.count
