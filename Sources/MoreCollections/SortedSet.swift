@@ -82,6 +82,20 @@ public struct SortedSet<Element: Comparable> {
     contents.reserveCapacity(minimumCapacity)
   }
 
+  /// Returns the result of `action` called on the contiguous storage of `self`.
+  ///
+  /// The pointer passed as an argument to `action` is valid only during the execution of this
+  /// method. Do not store or return the pointer for later use. Do not access the sorted array
+  /// on which this method is called in `action`. The referenced storage must be sorted according
+  /// to the ordering of `Element` when `action` returns.
+  ///
+  /// - Warning: `action` must not reassign its argument.
+  public mutating func withUnsafeMutableBufferPointer<T>(
+    _ action: (inout UnsafeMutableBufferPointer<Element>) throws -> T
+  ) rethrows -> T? {
+    try contents.withUnsafeMutableBufferPointer(action)
+  }
+
 }
 
 extension SortedSet: ExpressibleByArrayLiteral {
