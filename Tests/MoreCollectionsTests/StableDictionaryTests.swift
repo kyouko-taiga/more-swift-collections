@@ -187,6 +187,11 @@ class StableDictionaryTests: XCTestCase {
   func testIsCustomStringConvertible() {
     let s: StableDictionary = [1: -1, 2: -2]
     XCTAssertEqual(s.description, "[1: -1, 2: -2]")
+
+    let l = (0 ..< 100).map({ ($0, $0.description) })
+    let m = "[" + l.lazy.map({ (a, b) in "\(a): \(b)" }).joined(separator: ", ") + "]"
+    let t: StableDictionary = .init(uniqueKeysAndValues: l)
+    XCTAssertEqual(t.description, m)
   }
 
 }

@@ -350,7 +350,7 @@ public struct StableDictionary<Key: Hashable, Value> {
         } else if h2 == 0 {
           // Key is not contained.
           break
-        } else if (h2 & 0x7f) == 0x7f {
+        } else if h2 == 0x7f {
           // Bucket has been occupied.
           emptyBucket = position
         }
