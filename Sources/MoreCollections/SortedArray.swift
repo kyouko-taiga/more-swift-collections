@@ -194,3 +194,5 @@ extension SortedArray: CustomStringConvertible {
   }
 
 }
+
+extension SortedArray: Sendable where Element: Sendable {}

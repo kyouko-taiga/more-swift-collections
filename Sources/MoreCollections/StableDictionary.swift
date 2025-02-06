@@ -489,3 +489,5 @@ extension StableDictionary: CustomStringConvertible {
   }
 
 }
+
+extension StableDictionary: @unchecked Sendable where Key: Sendable, Value: Sendable {}

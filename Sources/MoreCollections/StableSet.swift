@@ -161,3 +161,5 @@ extension StableSet: CustomStringConvertible {
   }
 
 }
+
+extension StableSet: Sendable where Element: Sendable {}

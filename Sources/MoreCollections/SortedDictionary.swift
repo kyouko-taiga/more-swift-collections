@@ -2,7 +2,7 @@
 public struct SortedDictionary<Key: Comparable, Value> {
 
   /// A bucket in a sorted dictionary.
-  private struct Bucket: Comparable {
+  fileprivate struct Bucket: Comparable {
 
     /// The key assigned to this bucket.
     let key: Key
@@ -259,3 +259,7 @@ extension SortedDictionary: CustomStringConvertible {
   }
 
 }
+
+extension SortedDictionary: Sendable where Key: Sendable, Value: Sendable {}
+
+extension SortedDictionary.Bucket: Sendable where Key: Sendable, Value: Sendable {}

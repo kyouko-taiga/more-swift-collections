@@ -161,3 +161,5 @@ extension SortedSet: CustomStringConvertible {
   }
 
 }
+
+extension SortedSet: Sendable where Element: Sendable {}
