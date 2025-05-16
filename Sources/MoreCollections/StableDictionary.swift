@@ -34,12 +34,19 @@ public struct StableDictionary<Key: Hashable, Value> {
     /// A table from key hash to the offset of its corresponding bucket.
     var hashToBucket: [Int]
 
+    /// The offsets of the key, value, and hash properties of a bucket.
+    ///
+    /// These offsets are expensive to re-compute if the types of the keys and/or values are behind
+    /// a resilience boundary. Hence, they are cached here.
+    let offsets: Bucket.Offsets
+
     /// Creates an instance with the given properties.
     init(count: Int, capacity: Int, end: Int) {
       self.count = count
       self.capacity = capacity
       self.end = end
       self.hashToBucket = .init(repeating: -1, count: Int(Double(capacity) * 1.25))
+      self.offsets = .init()
     }
 
     /// Updates the hash-to-bucket table to assign `position` to `hash`.
@@ -58,6 +65,20 @@ public struct StableDictionary<Key: Hashable, Value> {
   /// A bucket in a stable dictionary.
   private struct Bucket {
 
+    /// The offsets of the stored properties in this data structure.
+    struct Offsets {
+
+      /// The offset of `key`.
+      let key = UInt16(MemoryLayout<Bucket>.offset(of: \.key)!)
+
+      /// The offset of `value`.
+      let value = UInt16(MemoryLayout<Bucket>.offset(of: \.value)!)
+
+      /// The offset of `truncatedHash`.
+      let truncatedHash = UInt16(MemoryLayout<Bucket>.offset(of: \.truncatedHash)!)
+
+    }
+
     /// The key assigned to this bucket.
     let key: Key
 
@@ -67,33 +88,32 @@ public struct StableDictionary<Key: Hashable, Value> {
     /// If the bucket is occupied, the 7 lowest bits of `key`'s hash; otherwise, 0.
     var truncatedHash: UInt8
 
-    /// Returns `true` iff `p` refers to a bucket storing a key/value pair.
-    static func isActive(_ p: UnsafeMutablePointer<Bucket>) -> Bool {
-      withMaybeUninitializedHash(of: p, { (h) in (h.pointee & 0x80) == 0x80 })
+    /// Returns `true` iff `p` refers to a bucket storing a key/value pair, interpreting the raw
+    /// bytes of a bucket's using `o`.
+    static func isActive(_ p: UnsafeMutablePointer<Bucket>, offsets o: Offsets) -> Bool {
+      withMaybeUninitializedHash(of: p, offsets: o, { (h) in (h.pointee & 0x80) == 0x80 })
     }
 
     /// Returns the result of `action` called with a pointer to the truncated hash of the bucket to
-    /// which `p` refers.
+    /// which `p` refers, interpreting the raw bytes of a bucket's using `o`.
     static func withMaybeUninitializedHash<T>(
-      of p: UnsafeMutablePointer<Bucket>, _ action: (UnsafeMutablePointer<UInt8>) -> T
+      of p: UnsafeMutablePointer<Bucket>, offsets o: Offsets,
+      _ action: (UnsafeMutablePointer<UInt8>) -> T
     ) -> T {
       let q = UnsafeMutableRawPointer(mutating: p)
-      let h = MemoryLayout<Bucket>.offset(of: \.truncatedHash)!
-      return action((q + h).assumingMemoryBound(to: UInt8.self))
+      return action((q + Int(o.truncatedHash)).assumingMemoryBound(to: UInt8.self))
     }
 
-    /// Deinitializes the memory referenced by `p`, returning the key/value pair that it stored.
+    /// Deinitializes the memory referenced by `p`, returning the key/value pair that it stored,
+    /// interpreting the raw bytes of a bucket's using `o`.
     static func unsafelyDeinitialize(
-      _ p: UnsafeMutablePointer<Bucket>
+      _ p: UnsafeMutablePointer<Bucket>, offsets o: Offsets,
     ) -> (key: Key, value: Value) {
       p.pointee.truncatedHash = 0x7f
       let q = UnsafeMutableRawPointer(mutating: p)
-      let k = MemoryLayout<Bucket>.offset(of: \.key)!
-      let v = MemoryLayout<Bucket>.offset(of: \.value)!
-
       return (
-        (q + k).assumingMemoryBound(to: Key.self).move(),
-        (q + v).assumingMemoryBound(to: Value.self).move())
+        (q + Int(o.key)).assumingMemoryBound(to: Key.self).move(),
+        (q + Int(o.value)).assumingMemoryBound(to: Value.self).move())
     }
 
   }
@@ -118,10 +138,11 @@ public struct StableDictionary<Key: Hashable, Value> {
     /// Deinitialize all elements in `self`.
     func deinitializeElements() {
       withUnsafeMutablePointers { (head, body) in
+        let o = head.pointee.offsets
         for i in 0 ..< head.pointee.capacity {
           let s = body.advanced(by: i)
-          if Bucket.isActive(s) { s.deinitialize(count: 1) }
-          Bucket.withMaybeUninitializedHash(of: s, { (h) in h.initialize(to: 0) })
+          if Bucket.isActive(s, offsets: o) { s.deinitialize(count: 1) }
+          Bucket.withMaybeUninitializedHash(of: s, offsets: o, { (h) in h.initialize(to: 0) })
         }
       }
     }
@@ -234,7 +255,7 @@ public struct StableDictionary<Key: Hashable, Value> {
     guard let c = contents else { preconditionFailure("Index out of range") }
     return c.withUnsafeMutablePointers { (head, body) in
       head.pointee.count -= 1
-      return Bucket.unsafelyDeinitialize(body.advanced(by: p))
+      return Bucket.unsafelyDeinitialize(body.advanced(by: p), offsets: head.pointee.offsets)
     }
   }
 
@@ -292,14 +313,17 @@ public struct StableDictionary<Key: Hashable, Value> {
     // Copy the current contents.
     contents?.withUnsafeMutablePointers { (_, source) in
       newContents.withUnsafeMutablePointers { (head, target) in
+        let o = head.pointee.offsets
         for i in 0 ..< capacity {
           // Copy the bucket.
           let s = source.advanced(by: i)
           let t = target.advanced(by: i)
-          let k = Bucket.withMaybeUninitializedHash(of: s) { (h) -> Key? in
+          let k = Bucket.withMaybeUninitializedHash(of: s, offsets: o) { (h) -> Key? in
             if (h.pointee == 0x00) || (h.pointee == 0x7f) {
               // Bucket is empty or has been occupied.
-              Bucket.withMaybeUninitializedHash(of: t, { (g) in g.initialize(to: h.pointee) })
+              Bucket.withMaybeUninitializedHash(of: t, offsets: o) { (g) in
+                g.initialize(to: h.pointee)
+              }
               return nil
             } else {
               // Bucket is occupied.
@@ -312,16 +336,19 @@ public struct StableDictionary<Key: Hashable, Value> {
           if let key = k {
             head.pointee.assign(position: i, forHash: key.hashValue)
           } else {
-            Bucket.withMaybeUninitializedHash(of: t, { (g) in g.initialize(to: 0) })
+            Bucket.withMaybeUninitializedHash(of: t, offsets: o, { (g) in g.initialize(to: 0) })
           }
         }
       }
     }
 
     // Zero-initialize the additional storage.
-    newContents.withUnsafeMutablePointerToElements { (t) in
+    newContents.withUnsafeMutablePointers { (head, target) in
+      let o = head.pointee.offsets
       for i in count ..< newCapacity {
-        Bucket.withMaybeUninitializedHash(of: t.advanced(by: i), { (h) in h.initialize(to: 0) })
+        Bucket.withMaybeUninitializedHash(of: target.advanced(by: i), offsets: o) { (h) in
+          h.initialize(to: 0)
+        }
       }
     }
 
@@ -397,8 +424,9 @@ extension StableDictionary: Collection {
   public var startIndex: Int {
     contents.map { (c) in
       c.withUnsafeMutablePointers { (head, body) in
+        let o = head.pointee.offsets
         for i in 0 ..< head.pointee.end {
-          if Bucket.isActive(body.advanced(by: i)) { return i }
+          if Bucket.isActive(body.advanced(by: i), offsets: o) { return i }
         }
         return head.pointee.end
       }
@@ -417,8 +445,9 @@ extension StableDictionary: Collection {
     guard let c = contents else { preconditionFailure("Index out of range") }
     return c.withUnsafeMutablePointers { (head, body) in
       precondition((p >= 0) && (p < head.pointee.end), "Index out of range")
+      let o = head.pointee.offsets
       for i in (p + 1) ..< head.pointee.end {
-        if Bucket.isActive(body.advanced(by: i)) { return i }
+        if Bucket.isActive(body.advanced(by: i), offsets: o) { return i }
       }
       return head.pointee.end
     }
@@ -431,8 +460,9 @@ extension StableDictionary: Collection {
     guard let c = contents else { preconditionFailure("Index out of range") }
     return c.withUnsafeMutablePointers { (head, body) in
       precondition((p >= 0) && (p < head.pointee.end), "Index out of range")
+      let o = head.pointee.offsets
       let s = body.advanced(by: p)
-      precondition(Bucket.isActive(s), "Index out of range")
+      precondition(Bucket.isActive(s, offsets: o), "Index out of range")
       return (s.pointee.key, s.pointee.value)
     }
   }
@@ -448,8 +478,9 @@ extension StableDictionary: BidirectionalCollection {
     guard let c = contents else { preconditionFailure("Index out of range") }
     return c.withUnsafeMutablePointers { (head, body) in
       precondition((p >= 0) && (p <= head.pointee.end), "Index out of range")
+      let o = head.pointee.offsets
       for i in (0 ..< p).reversed() {
-        if Bucket.isActive(body.advanced(by: i)) { return i }
+        if Bucket.isActive(body.advanced(by: i), offsets: o) { return i }
       }
       preconditionFailure("Index out of range")
     }
